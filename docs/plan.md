@@ -97,6 +97,9 @@ Step 3. 스케줄 입력
 0 12 * * * /home/pi/economySummary/run_agent.sh >> /home/pi/economySummary/cron.log 2>&1
 0 18 * * * /home/pi/economySummary/run_agent.sh >> /home/pi/economySummary/cron.log 2>&1
 ```
+# 매일 아침 7시 30분 일간 종합 경제 브리핑 생성
+30 7 * * * /home/pi/economySummary/run_agent.sh >> /home/pi/economySummary/cron.log 2>&1
+
 Step 4. 저장하고 나오기
 
 Ctrl + O 누르고 Enter (저장)

@@ -11,4 +11,5 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
     "trafilatura>=2.2.0",
+    "yfinance>=1.6.0",
 ]
