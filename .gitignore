@@ -11,3 +11,5 @@ wheels/
 
 # 환경 변수 파일
 .env
+
+obsidian_notes/

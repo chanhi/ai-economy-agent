@@ -237,3 +237,57 @@ def run_reviewer_agent(markdown_report, macro_indicators):
         model_tier="lite"
     )
     return json.loads(result_text)
+
+# ==========================================
+# 🧹 6. 에이전트 E (전처리/번역) - LITE 모델
+# ==========================================
+def run_preprocessor_agent(article_info):
+    full_text = article_info.get('full_text', '')
+    
+    prompt = f"""
+    너는 투자 은행의 리서치 어시스턴트(Pre-processor)다.
+    아래 수집된 기사 본문 원문에서 불필요한 광고, 언론사 정보, 관련 없는 텍스트(노이즈)를 완전히 제거하고, 
+    오직 경제/주식 분석에 필요한 핵심 본문만 '완벽한 한국어'로 정리해서 반환하라.
+    (원문이 영어라면 전문 번역/의역할 것. 요약하지 말고 본문의 디테일을 최대한 살릴 것.)
+
+    [기사 원문]
+    제목: {article_info['title']}
+    본문: {full_text[:10000]} 
+
+    응답형식: 어떠한 인사말이나 마크다운 없이, 정제된 한국어 본문 텍스트만 출력할 것.
+    """
+    print(f"🧹 [Agent E: 전처리] '{article_info['title'][:20]}...' 노이즈 제거 및 번역 중...")
+    
+    # 💡 텍스트만 반환하므로 JSON 설정 제외
+    return smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.1},
+        model_tier="lite"
+    )
+
+# ==========================================
+# 🧠 7. 에이전트 F (기억 합성) - LITE 모델
+# ==========================================
+def run_memory_synthesizer_agent(raw_memory):
+    # 만약 저장된 기억이 너무 짧으면 그대로 반환
+    if len(raw_memory) < 50:
+        return raw_memory
+        
+    prompt = f"""
+    너는 글로벌 거시경제 트렌드 분석가다.
+    아래는 최근 며칠간 우리 시스템이 기록한 시장의 단편적인 기억(키워드와 시황)들이다.
+    이 파편화된 정보들을 종합하여, "최근 시장을 지배하고 있는 거시경제 트렌드와 흐름의 변화"를 
+    한 단락(3~4문장)의 완성된 맥락(Context)으로 합성하라.
+
+    [과거 시장 기록]
+    {raw_memory}
+
+    응답형식: 어떠한 인사말 없이, 합성된 트렌드 분석 텍스트만 출력할 것.
+    """
+    print("🧠 [Agent F: 기억 합성] 파편화된 과거 기록을 거시적 트렌드로 엮어내는 중...")
+    
+    return smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.2},
+        model_tier="lite"
+    )
