@@ -7,6 +7,7 @@ from datetime import datetime
 from collectors import fetch_domestic_news, fetch_overseas_news, fetch_article_text, fetch_macro_indicators
 from agents import run_desk_agent, run_analyst_agent, run_editor_agent, run_reviewer_agent
 from memory import init_db, save_memory, get_recent_memory
+# from notifier import send_discord_alert
 
 def chunk_list(data_list, chunk_size):
     """리스트를 지정한 크기(배치)로 분할하는 헬퍼 함수"""
@@ -20,8 +21,8 @@ def main():
     # 2. 광범위 뉴스 수집 (국내 25개 + 해외 15개 = 40개)
     broad_search_query = "경제 주식" 
     print("📡 글로벌 경제/주식 뉴스를 대규모로 수집합니다...")
-    kr_news = fetch_domestic_news(broad_search_query, count=25)
-    us_news = fetch_overseas_news(count=15)
+    kr_news = fetch_domestic_news(broad_search_query, count=20)
+    us_news = fetch_overseas_news(count=30)
     combined_news = kr_news + us_news
     
     if not combined_news:
@@ -142,6 +143,12 @@ def main():
 
     # 9. 메모리 DB 저장
     save_memory(dynamic_keyword, market_overview, macro_indicators)
+
+    # ==========================================
+    # 10. 디스코드 알림 전송
+    # ==========================================
+    # safe_filename = os.path.basename(filename) 
+    # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, safe_filename)
 
 if __name__ == "__main__":
     main()

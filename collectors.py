@@ -41,26 +41,39 @@ def fetch_domestic_news(keyword, count=25):
     return news_list
 
 # ==========================================
-# 2. 해외 뉴스 수집 (CNBC RSS)
+# 2. 해외 뉴스 수집 (CNBC, WSJ, Yahoo Finance)
 # ==========================================
-def fetch_overseas_news(count=15):
-    rss_url = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
+def fetch_overseas_news(count=30):
+    # 💡 글로벌 핵심 경제 매체 3곳의 RSS 피드
+    rss_urls = {
+        "CNBC": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
+        "WSJ": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        "YahooFinance": "https://finance.yahoo.com/news/rssindex"
+    }
+    
     news_list = []
+    # 각 매체당 균등하게 뉴스를 배분하여 수집
+    count_per_source = (count // len(rss_urls)) + 1
     
     try:
-        feed = feedparser.parse(rss_url)
-        for idx, entry in enumerate(feed.entries[:count]):
-            news_list.append({
-                "id": f"US_{idx+1}",
-                "source": "CNBC",
-                "title": entry.title,
-                "description": entry.summary if 'summary' in entry else "",
-                "link": entry.link
-            })
+        for source_name, url in rss_urls.items():
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:count_per_source]:
+                # 일부 피드의 HTML 태그 찌꺼기를 정제합니다
+                raw_desc = entry.get('summary', '')
+                clean_desc = re.sub(r'<.*?>', '', raw_desc)
+                
+                news_list.append({
+                    "id": f"US_{source_name}_{len(news_list)+1}",
+                    "source": source_name,
+                    "title": entry.title,
+                    "description": clean_desc,
+                    "link": entry.link
+                })
     except Exception as e:
-        print(f"❌ CNBC 뉴스 수집 에러: {e}")
+        print(f"❌ 해외 뉴스 수집 에러 ({source_name}): {e}")
         
-    return news_list
+    return news_list[:count] # 정확히 요청한 개수만큼만 잘라서 반환
 
 # ==========================================
 # 3. 뉴스 본문 추출 (Trafilatura)
@@ -118,3 +131,34 @@ def fetch_macro_indicators():
     print(f"  ✅ 수집 완료: {indicator_string}")
     
     return indicator_string
+
+
+# ==========================================
+# 🧪 단위 테스트 (Unit Test) 실행 구역
+# ==========================================
+if __name__ == "__main__":
+    print("=== 🇰🇷 1. 국내 뉴스 수집 테스트 ===")
+    kr_test = fetch_domestic_news("경제 주식", count=3)
+    for news in kr_test:
+        print(f"[{news['source']}] {news['title']}")
+        print(f"  🔗 {news['link']}\n")
+
+    print("=== 🌎 2. 해외 뉴스 수집 테스트 ===")
+    us_test = fetch_overseas_news(count=10)
+    for news in us_test:
+        print(f"[{news['source']}] {news['title']}")
+        print(f"  🔗 {news['link']}\n")
+
+    print("=== 📈 3. 거시 경제 지표 테스트 ===")
+    indicators_test = fetch_macro_indicators()
+    print(f"  👉 최종 텍스트: {indicators_test}\n")
+
+    print("=== 🕸️ 4. 본문 추출(Trafilatura) 테스트 ===")
+    if us_test:
+        target_url = us_test[0]['link']
+        print(f"타겟 URL: {target_url}")
+        article_body = fetch_article_text(target_url)
+        if article_body:
+            print(f"✅ 성공! 추출된 본문 (앞 200자 미리보기):\n{article_body[:200]}...")
+        else:
+            print("❌ 본문 추출 실패 (보안이 강한 사이트이거나 연결 오류)")
