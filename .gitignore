@@ -11,5 +11,9 @@ wheels/
 
 # 환경 변수 파일
 .env
+config.py
 
+# 생성된 파일 (DB 및 마크다운 파일 전체 무시)
+economy_memory.db
 obsidian_notes/
+cron.log

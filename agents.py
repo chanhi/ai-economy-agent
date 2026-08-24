@@ -18,7 +18,7 @@ HEAVY_MODELS = [
 LITE_MODELS = [
     'models/gemini-3.5-flash-lite', 
     'models/gemini-2.5-flash-lite', 
-    'gemini-1.5-flash-8b' # 구글의 대표적인 경량화 무료 모델 백업
+    'gemini-1.5-flash-8b'
 ]
 
 # ==========================================
@@ -208,7 +208,7 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
     )
 
 # ==========================================
-# 🕵️‍♂️ 5. 에이전트 D (검수자) - LITE 모델 피드백 루프용
+# 🕵️‍♂️ 5. 에이전트 D (검수자) - 피드백 루프용
 # ==========================================
 def run_reviewer_agent(markdown_report, macro_indicators):
     prompt = f"""
@@ -239,7 +239,7 @@ def run_reviewer_agent(markdown_report, macro_indicators):
     return json.loads(result_text)
 
 # ==========================================
-# 🧹 6. 에이전트 E (전처리/번역) - LITE 모델
+# 🧹 6. 에이전트 E (전처리/번역)
 # ==========================================
 def run_preprocessor_agent(article_info):
     full_text = article_info.get('full_text', '')
@@ -266,7 +266,7 @@ def run_preprocessor_agent(article_info):
     )
 
 # ==========================================
-# 🧠 7. 에이전트 F (기억 합성) - LITE 모델
+# 🧠 7. 에이전트 F (기억 합성)
 # ==========================================
 def run_memory_synthesizer_agent(raw_memory):
     # 만약 저장된 기억이 너무 짧으면 그대로 반환

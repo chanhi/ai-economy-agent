@@ -10,6 +10,6 @@ cd /home/chan/economySummary
 /home/chan/.local/bin/uv run main.py
 
 # 깃허브 업로드 (옵시디언 동기화를 나중에 하신다고 했지만, 코드를 백업용으로 남겨둡니다)
-git add obsidian_notes/*.md
-git commit -m "Auto Update: $(date +'%Y-%m-%d %H:%M') 뉴스"
-git push origin main
+# git add obsidian_notes/*.md
+# git commit -m "Auto Update: $(date +'%Y-%m-%d %H:%M') 뉴스"
+# git push origin main

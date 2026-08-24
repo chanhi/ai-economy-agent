@@ -6,9 +6,8 @@ from datetime import datetime
 
 from collectors import fetch_domestic_news, fetch_overseas_news, fetch_article_text, fetch_macro_indicators
 from memory import init_db, save_memory, get_recent_memory
-from notifier import send_discord_alert
+# from notifier import send_discord_alert
 
-# 💡 새로 추가된 Agent E, F를 import 합니다.
 from agents import (
     run_desk_agent, run_analyst_agent, run_editor_agent, run_reviewer_agent,
     run_preprocessor_agent, run_memory_synthesizer_agent
@@ -33,7 +32,7 @@ def main():
 
     macro_indicators = fetch_macro_indicators()
 
-    # Agent A (데스크 - Lite)
+    # Agent A (데스크)
     TARGET_ARTICLE_COUNT = 8
     agent_a_result = run_desk_agent(combined_news, target_count=TARGET_ARTICLE_COUNT)
     
@@ -55,9 +54,7 @@ def main():
         text = fetch_article_text(item['link'])
         item['full_text'] = text if text else item['description']
 
-    # ==========================================
-    # 🧹 [NEW] 전처리 파이프라인 (Agent E - Lite)
-    # ==========================================
+    # 전처리 파이프라인 (Agent E)
     print(f"\n✨ Lite 모델을 활용해 {len(top_full_data)}개 기사의 노이즈 제거 및 번역을 시작합니다...")
     # Lite 모델은 분당 15회 호출이 가능하므로 8개를 한 번에 병렬 처리해도 안전합니다.
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -71,9 +68,7 @@ def main():
             except Exception as e:
                 print(f"❌ 전처리 에러 ({item['title']}): {e}")
 
-    # ==========================================
-    # 🧠 [NEW] 기억 합성 파이프라인 (Agent F - Lite)
-    # ==========================================
+    # 기억 합성 파이프라인 (Agent F)
     # 과거 5일 치의 단편적인 기억을 불러옵니다.
     raw_recent_memory = get_recent_memory(days=5)
     # Lite 모델이 이 기억들을 하나의 유려한 '시장 트렌드 맥락'으로 합성해 줍니다.
@@ -81,7 +76,7 @@ def main():
     print(f"  👉 [합성된 거시 트렌드]: {synthesized_memory[:100]}...\n")
 
 
-    # Agent B (분석가 - Heavy) : 4개씩 배치 처리 + RPM 쿨타임
+    # Agent B (분석가) : 4개씩 배치 처리 + RPM 쿨타임
     BATCH_SIZE = 4
     analyzed_results = []
     batches = list(chunk_list(top_full_data, BATCH_SIZE))
@@ -160,8 +155,8 @@ def main():
     save_memory(dynamic_keyword, market_overview, macro_indicators)
     
     # 디스코드 알림 전송
-    safe_filename = os.path.basename(filename) 
-    send_discord_alert(dynamic_keyword, market_overview, macro_indicators, safe_filename)
+    # safe_filename = os.path.basename(filename) 
+    # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, safe_filename)
 
 if __name__ == "__main__":
     main()
