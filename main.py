@@ -4,7 +4,10 @@ import time
 import concurrent.futures
 from datetime import datetime
 
-from collectors import fetch_domestic_news, fetch_overseas_news, fetch_article_text, fetch_macro_indicators
+from collectors import (
+    fetch_domestic_news, fetch_overseas_news, fetch_article_text, 
+    fetch_macro_indicators, fetch_major_earnings_schedule, fetch_top_movers
+)
 from memory import init_db, save_memory, get_recent_memory
 # from notifier import send_discord_alert
 
@@ -19,10 +22,12 @@ def chunk_list(data_list, chunk_size):
 
 def main():
     init_db()
-    
-    broad_search_query = "경제 주식" 
+
     print("📡 글로벌 경제/주식 뉴스를 대규모로 수집합니다...")
-    kr_news = fetch_domestic_news(broad_search_query, count=20)
+    print("📡 국내 뉴스를 '거시경제'와 '시황/일정' 두 트랙으로 수집합니다...")
+    kr_macro_news = fetch_domestic_news("경제 주식", count=10)
+    kr_market_news = fetch_domestic_news("증시 마감 시황 일정", count=10) # 💡 핵심: 시황과 일정을 명시
+    kr_news = kr_macro_news + kr_market_news
     us_news = fetch_overseas_news(count=30)
     combined_news = kr_news + us_news
     
@@ -31,6 +36,18 @@ def main():
         return
 
     macro_indicators = fetch_macro_indicators()
+
+    # Alpha Vantage 실적 일정 주입
+    earnings_schedule = fetch_major_earnings_schedule()
+    
+    # 기존 환율/금리 텍스트 묶음에 실적 일정을 추가합니다.
+    macro_indicators += f"\n\n[이번 주 주요 빅테크 실적 일정]\n{earnings_schedule}"
+    print(f"\n📌 [주요 일정 수집 완료]\n{earnings_schedule}\n")
+
+    # 시장 주도주 데이터 주입
+    top_movers_data = fetch_top_movers()
+    macro_indicators += f"\n\n[미국 증시 일일 주도주 (Top Movers)]\n{top_movers_data}"
+    print(f"📌 [주도주 수집 완료]\n{top_movers_data}\n")
 
     # Agent A (데스크)
     TARGET_ARTICLE_COUNT = 8

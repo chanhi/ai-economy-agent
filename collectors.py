@@ -134,31 +134,99 @@ def fetch_macro_indicators():
 
 
 # ==========================================
-# 🧪 단위 테스트 (Unit Test) 실행 구역
+# 5. 주요 빅테크 실적 발표 캘린더 (Alpha Vantage)
 # ==========================================
-if __name__ == "__main__":
-    print("=== 🇰🇷 1. 국내 뉴스 수집 테스트 ===")
-    kr_test = fetch_domestic_news("경제 주식", count=3)
-    for news in kr_test:
-        print(f"[{news['source']}] {news['title']}")
-        print(f"  🔗 {news['link']}\n")
+def fetch_major_earnings_schedule():
+    import csv
+    import requests
+    from datetime import datetime, timedelta
+    from config import ALPHA_VANTAGE_API_KEY
+    
+    # 💡 토큰 절약을 위해 시장 파급력이 거대한 '핵심 티커'만 필터링합니다. 
+    # (필요시 TSMC, ASML 등 원하는 티커를 자유롭게 추가하세요)
+    TARGET_SYMBOLS = {'NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'INTC', 'NFLX'}
+    
+    # horizon=3month로 가져오면 향후 3개월치 일정이 CSV로 반환됩니다.
+    url = f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey={ALPHA_VANTAGE_API_KEY}"
+    
+    upcoming_earnings = []
+    
+    try:
+        with requests.Session() as s:
+            download = s.get(url)
+            download.raise_for_status()
+            
+            # API 결과가 CSV 형태이므로 디코딩하여 파싱합니다.
+            decoded_content = download.content.decode('utf-8')
+            csv_reader = csv.DictReader(decoded_content.splitlines(), delimiter=',')
+            
+            # 오늘부터 딱 일주일 치(7일) 일정만 필터링
+            today = datetime.now().date()
+            end_date = today + timedelta(days=7)
+            
+            for row in csv_reader:
+                try:
+                    report_date = datetime.strptime(row['reportDate'], '%Y-%m-%d').date()
+                    symbol = row['symbol']
+                    
+                    # 기간 안에 있고, 타겟 티커 리스트에 포함된 경우만 추출
+                    if today <= report_date <= end_date and symbol in TARGET_SYMBOLS:
+                        upcoming_earnings.append(f"- {report_date} : {symbol} ({row['name']}) 실적 발표")
+                except Exception:
+                    continue # 날짜 형식이 안 맞거나 빈 값인 행은 무시
+                    
+    except Exception as e:
+        print(f"❌ 실적 캘린더 수집 에러: {e}")
+        return "실적 일정 데이터를 불러오지 못했습니다."
+        
+    if upcoming_earnings:
+        return "\n".join(upcoming_earnings)
+    else:
+        return "이번 주 예정된 주요 빅테크(M7 등) 실적 발표 없음."
 
-    print("=== 🌎 2. 해외 뉴스 수집 테스트 ===")
-    us_test = fetch_overseas_news(count=10)
-    for news in us_test:
-        print(f"[{news['source']}] {news['title']}")
-        print(f"  🔗 {news['link']}\n")
-
-    print("=== 📈 3. 거시 경제 지표 테스트 ===")
-    indicators_test = fetch_macro_indicators()
-    print(f"  👉 최종 텍스트: {indicators_test}\n")
-
-    print("=== 🕸️ 4. 본문 추출(Trafilatura) 테스트 ===")
-    if us_test:
-        target_url = us_test[0]['link']
-        print(f"타겟 URL: {target_url}")
-        article_body = fetch_article_text(target_url)
-        if article_body:
-            print(f"✅ 성공! 추출된 본문 (앞 200자 미리보기):\n{article_body[:200]}...")
-        else:
-            print("❌ 본문 추출 실패 (보안이 강한 사이트이거나 연결 오류)")
+# ==========================================
+# 6. 일일 미국 시장 주도주 수집 (Alpha Vantage)
+# ==========================================
+def fetch_top_movers():
+    import requests
+    from config import ALPHA_VANTAGE_API_KEY
+    
+    url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={ALPHA_VANTAGE_API_KEY}"
+    
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()
+        
+        # 💡 일일 호출 한도(25회) 초과 시 안내 메시지 처리
+        if "Information" in data:
+            print("⚠️ Alpha Vantage API 한도 초과입니다.")
+            return "주도주 데이터 수집 불가 (API 한도 초과)"
+            
+        # 토큰 절약을 위해 상위 5개 종목의 티커와 등락률만 예쁘게 포매팅하는 내부 함수
+        def format_stocks(stock_list, count=5):
+            if not stock_list: 
+                return "데이터 없음"
+            
+            result = []
+            for stock in stock_list[:count]:
+                ticker = stock.get('ticker', '')
+                change_pct = stock.get('change_percentage', '')
+                # 예: NVDA (+4.5%)
+                result.append(f"{ticker} ({change_pct})")
+            return ", ".join(result)
+            
+        top_gainers = format_stocks(data.get('top_gainers', []))
+        top_losers = format_stocks(data.get('top_losers', []))
+        most_active = format_stocks(data.get('most_actively_traded', []))
+        
+        summary = (
+            f"- 🚀 급등주 (Top Gainers): {top_gainers}\n"
+            f"- 📉 급락주 (Top Losers): {top_losers}\n"
+            f"- 🔥 거래량 상위 (Most Active): {most_active}"
+        )
+        return summary
+        
+    except Exception as e:
+        print(f"❌ 주도주 수집 에러: {e}")
+        return "시장 주도주 데이터를 불러오지 못했습니다."

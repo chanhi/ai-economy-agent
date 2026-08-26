@@ -60,7 +60,7 @@ def smart_gemini_call(prompt, config_params, model_tier="heavy", retries=2):
     raise Exception(f"🚨 사용 가능한 모든 {model_tier} 모델의 한도가 초과되었거나 에러가 발생했습니다.")
 
 # ==========================================
-# 🕵️‍♂️ 2. 에이전트 A (데스크) - 선별 기사 수 확장 (기본 6~8개)
+# 🕵️‍♂️ 2. 에이전트 A (데스크)
 # ==========================================
 def run_desk_agent(all_news, target_count=8):
     news_context = ""
@@ -73,6 +73,10 @@ def run_desk_agent(all_news, target_count=8):
     1. 오늘 시장을 관통하는 가장 핵심적인 키워드 1개
     2. 전체 거시 경제 흐름과 시장 관전 포인트(Market Overview) 2~3줄
     3. 주식/투자 시장에 가장 큰 파급력을 가질 핵심 기사 {target_count}개를 선별해라.
+
+    [기사 선별 최우선 규칙 (우선순위)]
+    1. 시장의 방향성을 결정짓는 '초대형 일정' (예: M7(엔비디아, 애플 등) 빅테크 실적 발표, FOMC, CPI 지표 발표)은 발견 즉시 반드시 포함할 것.
+    2. 단순 하락/상승 팩트보다, 상승/하락의 '원인(기대감, 경계심 등)'을 다룬 시황 기사를 우대할 것.
 
     [뉴스 데이터]
     {news_context}

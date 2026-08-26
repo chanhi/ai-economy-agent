@@ -17,3 +17,6 @@ config.py
 economy_memory.db
 obsidian_notes/
 cron.log
+
+#test
+test/

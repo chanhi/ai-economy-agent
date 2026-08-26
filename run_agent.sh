@@ -1,15 +1,17 @@
 #!/bin/bash
-# 실행될 때의 시간을 로그로 찍어줍니다.
 echo "========================================"
 echo "실행 시간: $(date +'%Y-%m-%d %H:%M:%S')"
 echo "========================================"
 
+# 1. 프로젝트 폴더로 이동하여 파이썬 파이프라인 실행
 cd /home/chan/economySummary
-
-# 파이썬 실행
 /home/chan/.local/bin/uv run main.py
 
-# 깃허브 업로드 (옵시디언 동기화를 나중에 하신다고 했지만, 코드를 백업용으로 남겨둡니다)
-# git add obsidian_notes/*.md
-# git commit -m "Auto Update: $(date +'%Y-%m-%d %H:%M') 뉴스"
-# git push origin main
+# 2. 노트 폴더로 이동하여 Private 저장소로 자동 Push
+cd /home/chan/economySummary/obsidian_notes
+git add .
+# 오늘 날짜를 커밋 메시지로 남김
+git commit -m "Auto update: $(date +'%Y-%m-%d %H:%M:%S')"
+git push origin main
+
+echo "✅ 일간 리포트 생성 및 Private 저장소 백업 완료!"
