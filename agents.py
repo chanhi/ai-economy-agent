@@ -160,7 +160,14 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
         report_context += f"선정 이유: {item['reason']}\n"
         report_context += f"수혜/피해 섹터: {', '.join(item.get('affected_sectors', []))}\n"
         report_context += f"심층 분석 내용:\n" + "\n".join([f"  - {s}" for s in item.get('summary', [])]) + "\n"
-        term_strings = [f"{t['term']}({t['explanation']})" for t in item.get('terms', [])]
+        term_strings = []
+        for t in item.get('terms', []):
+            if isinstance(t, dict):
+                # 정상적으로 딕셔너리로 왔을 때 (키가 없을 경우를 대비해 .get() 사용)
+                term_strings.append(f"{t.get('term', '')}({t.get('explanation', '')})")
+            elif isinstance(t, str):
+                # AI가 제멋대로 문자열로 뱉었을 때 (그대로 사용)
+                term_strings.append(t)
         report_context += f"용어 해설: {', '.join(term_strings)}\n"
         report_context += f"원문 링크: {item['link']}\n"
         report_context += "=" * 40 + "\n"
