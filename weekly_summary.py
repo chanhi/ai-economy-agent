@@ -1,7 +1,8 @@
 import os
 import glob
 from datetime import datetime, timedelta
-from agents import smart_gemini_call
+from config import OBSIDIAN_OUTPUT_DIR
+from agents.core import smart_gemini_call
 # from notifier import send_discord_alert
 
 # ==========================================
@@ -41,7 +42,6 @@ def run_chief_strategist_agent(weekly_reports_text):
     """
     print("👑 [Agent G: 수석 전략가] Heavy 모델로 1주일 치 리포트 전문을 분석하여 주간 전략 수립 중...")
     
-    # 💡 토큰 예산이 널널하므로 가장 똑똑한 Heavy 모델 사용
     return smart_gemini_call(
         prompt=prompt, 
         config_params={"temperature": 0.3},
@@ -51,31 +51,25 @@ def run_chief_strategist_agent(weekly_reports_text):
 def main():
     print("📅 주간 경제 총결산 파이프라인을 시작합니다...")
     
-    output_dir = "obsidian_notes"
-    if not os.path.exists(output_dir):
+    # 💡 config.py에 정의된 상수 사용
+    if not os.path.exists(OBSIDIAN_OUTPUT_DIR):
         print("⚠️ 옵시디언 노트 폴더가 존재하지 않습니다.")
         return
 
-    # 1. 최근 7일 이내에 생성된 일간 리포트 파일들을 찾습니다.
     today = datetime.now()
     seven_days_ago = today - timedelta(days=7)
     
     weekly_content = ""
     file_count = 0
     
-    # obsidian_notes 폴더 안의 모든 .md 파일을 순회
-    for filepath in glob.glob(os.path.join(output_dir, "*.md")):
-        # 파일명 추출
+    for filepath in glob.glob(os.path.join(OBSIDIAN_OUTPUT_DIR, "*.md")):
         filename = os.path.basename(filepath)
         
-        # '주간' 리포트가 아닌 '일간' 리포트만 타겟으로 삼음
         if "일간_종합_경제요약" in filename:
             try:
-                # 파일명에서 날짜(YYYY-MM-DD) 파싱
                 date_str = filename[:10] 
                 file_date = datetime.strptime(date_str, "%Y-%m-%d")
                 
-                # 최근 7일 이내의 파일인지 확인
                 if seven_days_ago <= file_date <= today:
                     with open(filepath, "r", encoding="utf-8") as f:
                         weekly_content += f"\n\n========================================\n"
@@ -92,28 +86,25 @@ def main():
 
     print(f"📚 최근 {file_count}개의 일간 리포트 텍스트를 성공적으로 병합했습니다.")
 
-    # 2. Agent G에게 병합된 텍스트 전체를 넘겨서 주간 결산 마크다운 생성
     weekly_markdown = run_chief_strategist_agent(weekly_content)
 
-    # 3. 주간 리포트 파일 저장
     year_month = today.strftime("%Y-%m")
-    # 대략 몇 번째 주인지 계산
     week_num = (today.day - 1) // 7 + 1
     
     safe_filename = f"{year_month}-W{week_num}_주간_경제_총결산.md"
-    save_path = os.path.join(output_dir, safe_filename)
+    save_path = os.path.join(OBSIDIAN_OUTPUT_DIR, safe_filename)
     
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(weekly_markdown)
         
     print(f"\n🎉 [완료] 주간 총결산 리포트 생성 완료: {save_path}")
 
-    # 4. 디스코드 알림
+    # 💡 utils/notifier.py 모듈을 활용하여 디스코드 알림 전송 기능 활성화
     # send_discord_alert(
     #     keyword="주간 경제 총결산 (Weekly Macro Strategy)",
     #     overview="월~금요일까지의 거시 경제 흐름과 다음 주 관전 포인트가 정리되었습니다.",
     #     indicators="주간 리포트 본문 참조",
-    #     filename=safe_filename
+    #     filepath=save_path
     # )
 
 if __name__ == "__main__":
