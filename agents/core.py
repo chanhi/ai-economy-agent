@@ -146,7 +146,6 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
         report_context += f"수혜/피해 섹터: {', '.join(item.get('affected_sectors', []))}\n"
         report_context += f"심층 분석 내용:\n" + "\n".join([f"  - {s}" for s in item.get('summary', [])]) + "\n"
         
-        # 💡 에이전트 용어집 방어 로직 (문자열/딕셔너리 예외처리 완료)
         term_strings = []
         for t in item.get('terms', []):
             if isinstance(t, dict):
@@ -174,10 +173,11 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
     [심층 분석 데이터]
     {report_context}
 
-    [마크다운 구조 지침]
+    [마크다운 구조 지침 및 옵시디언 고도화]
     ---
     tags: [경제일간리포트, {dynamic_keyword}]
     date: {today_str}
+    market_phase: (현재 시장 상황을 추론하여 Bull / Bear / Sideways 중 1개만 영문으로 작성)
     ---
     # 🏛️ Daily Macro Report: {dynamic_keyword}
 
@@ -190,9 +190,13 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
     (각 기사별 소제목(###), 선정 이유, 영향 섹터, 팩트/배경/전망)
 
     ## 📖 오늘의 금융/경제 단어장
-    (용어 사전, 백링크 `[[용어]]` 적용)
+    (용어 사전)
 
     ## 🔗 출처 및 참고 기사
+
+    [💡 백링크(Backlink) 강제 규칙]
+    - 본문에 등장하는 모든 '국가명', '기업명(엔비디아, 애플 등)', '거시 지표명(CPI, 금리, FOMC 등)', '주요 경제 용어'는 무조건 양옆에 대괄호를 두 번 씌워 옵시디언 백링크 양식 `[[단어]]` 로 작성하라.
+    - 예시: "오늘 [[미국]] 증시는 [[엔비디아]]의 실적 발표와 [[연준]]의 [[금리]] 인하 기대감에..."
     """
     print("👨‍💼 [Agent C: 편집장] Lite 모델로 대형 일간 종합 리포트 조판 중...")
     
@@ -200,6 +204,54 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
         prompt=prompt, 
         config_params={"temperature": 0.3},
         model_tier="lite"
+    )
+
+# ==========================================
+# 📊 8. 에이전트 H (포트폴리오 설계사)
+# ==========================================
+def run_portfolio_architect_agent(macro_report):
+    prompt = f"""
+    너는 글로벌 톱티어 자산운용사의 수석 포트폴리오 설계사(Portfolio Architect)다.
+    아래 제공된 경제 리포트를 심층 분석하여, 다가오는 시장 환경에 대비하기 위한 '섹터별 포트폴리오 비중 조절 전략'을 수립하라.
+
+    [분석 대상 리포트]
+    {macro_report}
+
+    [사전 정의된 평가 대상 섹터]
+    1. 대형 기술주 (Big Tech)
+    2. 반도체 및 AI (Semiconductors & AI)
+    3. 헬스케어 (Healthcare)
+    4. 금융 (Financials)
+    5. 에너지 (Energy)
+    6. 미국 장기 국채 (Long-term Treasuries)
+    7. 현금성 자산 (Cash)
+
+    [투자 성향별 전략 가이드]
+    - 공격투자형 (Aggressive): 리스크를 감수하며 초과 수익을 추구하는 포지션
+    - 안정투자형 (Conservative): 변동성을 방어하고 자본을 지키는 포지션
+
+    위 섹터들에 대해 각각 '확대(Overweight)', '유지(Hold)', '축소(Underweight)' 의견을 제시하고 핵심 이유를 1줄로 간결하게 적어라.
+    반드시 아래의 마크다운 표 형식만 출력하라. (다른 인사말이나 설명은 절대 생략할 것)
+
+    ## 🧭 일간 포트폴리오 액션 플랜 (Action Plan)
+    ### ⚔️ 공격투자형 (Aggressive)
+    | 섹터 | 액션 | 핵심 근거 |
+    | :--- | :---: | :--- |
+    | 대형 기술주 | (확대/유지/축소) | (이유) |
+    ... (7개 섹터 모두 작성) ...
+
+    ### 🛡️ 안정투자형 (Conservative)
+    | 섹터 | 액션 | 핵심 근거 |
+    | :--- | :---: | :--- |
+    ... (7개 섹터 모두 작성) ...
+    """
+    print("🧑‍💼 [Agent H: 설계사] Heavy 모델로 리포트 분석 및 투자 성향별 액션 플랜 수립 중...")
+    
+    # 전략 수립은 고도화된 추론이 필요하므로 Heavy 모델 배정
+    return smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.2},
+        model_tier="heavy"
     )
 
 

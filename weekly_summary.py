@@ -51,7 +51,6 @@ def run_chief_strategist_agent(weekly_reports_text):
 def main():
     print("📅 주간 경제 총결산 파이프라인을 시작합니다...")
     
-    # 💡 config.py에 정의된 상수 사용
     if not os.path.exists(OBSIDIAN_OUTPUT_DIR):
         print("⚠️ 옵시디언 노트 폴더가 존재하지 않습니다.")
         return
@@ -59,10 +58,17 @@ def main():
     today = datetime.now()
     seven_days_ago = today - timedelta(days=7)
     
+    # 💡 주간 결산 파일도 현재 연월 폴더에 저장하기 위한 경로 준비
+    year_month = today.strftime("%Y-%m")
+    target_dir = os.path.join(OBSIDIAN_OUTPUT_DIR, year_month)
+    os.makedirs(target_dir, exist_ok=True)
+    
     weekly_content = ""
     file_count = 0
     
-    for filepath in glob.glob(os.path.join(OBSIDIAN_OUTPUT_DIR, "*.md")):
+    # 💡 `**/*.md`와 `recursive=True`를 사용해 모든 연월 하위 폴더를 샅샅이 뒤집니다.
+    search_pattern = os.path.join(OBSIDIAN_OUTPUT_DIR, "**", "*.md")
+    for filepath in glob.glob(search_pattern, recursive=True):
         filename = os.path.basename(filepath)
         
         if "일간_종합_경제요약" in filename:
@@ -88,18 +94,15 @@ def main():
 
     weekly_markdown = run_chief_strategist_agent(weekly_content)
 
-    year_month = today.strftime("%Y-%m")
     week_num = (today.day - 1) // 7 + 1
-    
     safe_filename = f"{year_month}-W{week_num}_주간_경제_총결산.md"
-    save_path = os.path.join(OBSIDIAN_OUTPUT_DIR, safe_filename)
+    save_path = os.path.join(target_dir, safe_filename)
     
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(weekly_markdown)
         
     print(f"\n🎉 [완료] 주간 총결산 리포트 생성 완료: {save_path}")
 
-    # 💡 utils/notifier.py 모듈을 활용하여 디스코드 알림 전송 기능 활성화
     # send_discord_alert(
     #     keyword="주간 경제 총결산 (Weekly Macro Strategy)",
     #     overview="월~금요일까지의 거시 경제 흐름과 다음 주 관전 포인트가 정리되었습니다.",

@@ -6,7 +6,7 @@ from collectors.news import fetch_domestic_news, fetch_overseas_news, fetch_arti
 from collectors.market import fetch_macro_indicators, fetch_major_earnings_schedule, fetch_top_movers
 from agents.core import (
     run_desk_agent, run_analyst_agent, run_editor_agent, run_reviewer_agent,
-    run_preprocessor_agent, run_memory_synthesizer_agent
+    run_preprocessor_agent, run_memory_synthesizer_agent, run_portfolio_architect_agent
 )
 from storage.memory import init_db, save_memory, get_recent_memory
 from storage.export import save_markdown_report
@@ -16,8 +16,8 @@ def main():
     # 1. 초기화 및 수집부
     init_db()
     print("📡 글로벌 경제/주식 뉴스를 대규모로 수집합니다...")
-    kr_news = fetch_domestic_news("경제 주식", count=10) + fetch_domestic_news("증시 마감 시황 일정", count=10)
-    combined_news = kr_news + fetch_overseas_news(count=30)
+    kr_news = fetch_domestic_news("경제 주식", count=15) + fetch_domestic_news("증시 마감 시황 일정", count=15)
+    combined_news = kr_news + fetch_overseas_news(count=50)
     
     if not combined_news:
         print("⚠️ 수집된 뉴스가 없습니다.")
@@ -100,7 +100,11 @@ def main():
             else:
                 print("🚨 최대 재작성 횟수를 초과했습니다. 강제 저장합니다.")
 
-    # 8. 파일 저장 및 알림 (분리된 Storage & Utils 활용)
+    # 8. Agent H (포트폴리오 설계사) 호출 및 병합
+    portfolio_strategy = run_portfolio_architect_agent(final_markdown)
+    final_markdown += f"\n\n{portfolio_strategy}"
+
+    # 9. 파일 저장 및 알림 (분리된 Storage & Utils 활용)
     saved_filepath = save_markdown_report(dynamic_keyword, final_markdown)
     save_memory(dynamic_keyword, market_overview, macro_indicators)
     # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
