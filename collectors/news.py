@@ -3,6 +3,7 @@ import urllib.parse
 import requests
 import feedparser
 import trafilatura
+import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from config import NCP_CLIENT_ID, NCP_CLIENT_SECRET
@@ -54,31 +55,54 @@ def fetch_domestic_news(keyword, count=10):
 def fetch_overseas_news(count=30):
     rss_urls = {
         "CNBC": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-        "WSJ": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-        "YahooFinance": "https://finance.yahoo.com/news/rssindex"
+        # "WSJ": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", # 결과 뉴스들이 최신화가 안되어 있는 것으로 보임(구독 필요)
+        "YahooFinance": "https://finance.yahoo.com/news/rssindex",
+        "FT": "https://www.ft.com/?format=rss"
     }
     
-    news_list = []
-    count_per_source = (count // len(rss_urls)) + 1
+    all_news = []
+    now = datetime.now(timezone.utc)
     
-    try:
-        for source_name, url in rss_urls.items():
+    for source_name, url in rss_urls.items():
+        try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:count_per_source]:
+            for entry in feed.entries:
+                # 💡 1. RSS 발행일(published_parsed) 파싱 및 48시간 날짜 필터링
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    pub_date = datetime.fromtimestamp(time.mktime(entry.published_parsed), timezone.utc)
+                    if now - pub_date > timedelta(hours=48):
+                        continue # 이틀이 지난 과거 기사는 버림
+                else:
+                    pub_date = now # 날짜 정보가 없는 예외 케이스 처리
+
                 raw_desc = entry.get('summary', '')
                 clean_desc = re.sub(r'<.*?>', '', raw_desc)
                 
-                news_list.append({
-                    "id": f"US_{source_name}_{len(news_list)+1}",
+                all_news.append({
                     "source": source_name,
                     "title": entry.title,
                     "description": clean_desc,
-                    "link": entry.link
+                    "link": entry.link,
+                    "pub_date": pub_date
                 })
-    except Exception as e:
-        print(f"❌ 해외 뉴스 수집 에러 ({source_name}): {e}")
+        except Exception as e:
+            print(f"❌ 해외 뉴스 수집 에러 ({source_name}): {e}")
+            
+    # 💡 2. 매체 구분 없이 수집된 전체 기사를 최신 시간순으로 통합 정렬
+    all_news.sort(key=lambda x: x['pub_date'], reverse=True)
+    
+    # 💡 3. 정렬된 전체 리스트에서 목표 개수만큼만 잘라서 최종 반환
+    final_news = []
+    for idx, item in enumerate(all_news[:count]):
+        final_news.append({
+            "id": f"US_{item['source']}_{idx+1}",
+            "source": item['source'],
+            "title": item['title'],
+            "description": item['description'],
+            "link": item['link']
+        })
         
-    return news_list[:count]
+    return final_news
 
 def fetch_article_text(url):
     headers = {

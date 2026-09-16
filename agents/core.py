@@ -8,6 +8,7 @@ from config import GEMINI_API_KEY
 
 HEAVY_MODELS = [
     'gemini-flash-latest', 
+    'models/gemini-3.7-flash',
     'models/gemini-3.6-flash',
     'models/gemini-3.5-flash',
     'models/gemini-2.5-flash'
@@ -194,9 +195,12 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
 
     ## 🔗 출처 및 참고 기사
 
-    [💡 백링크(Backlink) 강제 규칙]
-    - 본문에 등장하는 모든 '국가명', '기업명(엔비디아, 애플 등)', '거시 지표명(CPI, 금리, FOMC 등)', '주요 경제 용어'는 무조건 양옆에 대괄호를 두 번 씌워 옵시디언 백링크 양식 `[[단어]]` 로 작성하라.
-    - 예시: "오늘 [[미국]] 증시는 [[엔비디아]]의 실적 발표와 [[연준]]의 [[금리]] 인하 기대감에..."
+    [💡 옵시디언 백링크(Backlink) 강제 규칙 - 매우 중요]
+    - 본문에 등장하는 모든 '국가명', '기업명', '거시 지표명(CPI, 금리, FOMC 등)', '주요 경제 용어', '섹터명'은 무조건 양옆에 대괄호를 씌워 `[[단어]]` 양식으로 작성하라.
+    - 특히 자산 간의 **상관관계**나 **인과관계**를 설명할 때 반드시 백링크를 사용하여 그래프 연결성을 극대화하라.
+    - 나쁜 예: "오늘 금리 인상 우려로 기술주가 하락했다."
+    - 좋은 예: "오늘 [[금리]] 인상 우려로 [[기술주]]가 하락했다."
+    - 단어장뿐만 아니라 **리포트 본문 전체(요약, 분석, 시황 등)**에 이 규칙을 예외 없이 적용하라.
     """
     print("👨‍💼 [Agent C: 편집장] Lite 모델로 대형 일간 종합 리포트 조판 중...")
     
@@ -330,3 +334,31 @@ def run_memory_synthesizer_agent(raw_memory):
         config_params={"temperature": 0.2},
         model_tier="lite"
     )
+
+def run_hourly_filter_agent(all_news, target_count=15):
+    news_context = ""
+    for idx, news in enumerate(all_news):
+        news_context += f"[{idx}] {news['title']} | 요약: {news['description']}\n"
+
+    prompt = f"""
+    너는 투자 은행의 뉴스 큐레이터(1차 검문소)다.
+    방금 수집된 {len(all_news)}개의 최신 뉴스 중에서 스팸, 단순 시황 중계(단순 숫자 나열), 광고성 기사, 영양가 없는 찌라시를 걸러내라.
+    글로벌 거시경제와 주식 시장에 의미 있는 영향을 미칠 '진짜 뉴스' 최대 {target_count}개만 선별하라.
+
+    [뉴스 데이터]
+    {news_context}
+    
+    응답형식(JSON):
+    {{
+        "selected_indices": [선별된 기사의 인덱스 번호 숫자 리스트 (예: [0, 3, 5, 12])]
+    }}
+    """
+    print(f"⏳ [Agent: 1차 큐레이터] Lite 모델로 {len(all_news)}개 중 유의미한 기사 선별 중...")
+    
+    import json
+    result_text = smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.1, "response_mime_type": "application/json"},
+        model_tier="lite"
+    )
+    return json.loads(result_text)
