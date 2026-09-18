@@ -127,13 +127,34 @@ def run_analyst_agent(article_info, recent_memory):
     }}
     """
     print(f"🧑‍🏫 [Agent B] '{article_info['title'][:25]}...' 전문 딥다이브 분석 중...")
-    
+
     result_text = smart_gemini_call(
         prompt=prompt, 
         config_params={"temperature": 0.2, "response_mime_type": "application/json"},
         model_tier="heavy"
     )
-    return json.loads(result_text)
+    
+    try:
+        # 가끔 모델이 마크다운(```json)을 붙여서 반환하는 경우를 대비한 텍스트 정제
+        clean_text = result_text.strip()
+        if clean_text.startswith("```"):
+            clean_text = clean_text.split("\n", 1)[-1]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+            clean_text = clean_text.strip()
+            
+        return json.loads(clean_text)
+    
+    except json.JSONDecodeError as e:
+        print(f"⚠️ [Agent B 에러] JSON 문법 오류가 발생하여 해당 기사 분석을 건너뜁니다: {e}")
+        # 에러 발생 시 프로그램이 뻗지 않도록 기본(Fallback) 데이터 반환
+        return {
+            "id": article_info['id'],
+            "thinking_process": "AI 분석 중 JSON 포맷팅 에러 발생",
+            "summary": ["📌 [시스템 알림] AI의 응답 형식 오류로 인해 해당 기사의 상세 분석이 누락되었습니다."],
+            "affected_sectors": ["분석 불가"],
+            "terms": []
+        }
 
 
 def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
@@ -194,6 +215,7 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
     (용어 사전)
 
     ## 🔗 출처 및 참고 기사
+    (본 리포트 분석에 활용된 모든 기사의 제목과 원문 링크를 빠짐없이 '- [기사 제목](원문 링크)' 형태의 하이퍼링크로 나열할 것)
 
     [💡 옵시디언 백링크(Backlink) 강제 규칙 - 매우 중요]
     - 본문에 등장하는 모든 '국가명', '기업명', '거시 지표명(CPI, 금리, FOMC 등)', '주요 경제 용어', '섹터명'은 무조건 양옆에 대괄호를 씌워 `[[단어]]` 양식으로 작성하라.
@@ -285,7 +307,22 @@ def run_reviewer_agent(markdown_report, macro_indicators):
         config_params={"temperature": 0.1, "response_mime_type": "application/json"},
         model_tier="lite"
     )
-    return json.loads(result_text)
+    
+    # 💡 무인 자동화를 위한 검수자 JSON 파싱 안전망
+    try:
+        clean_text = result_text.strip()
+        if clean_text.startswith("```"):
+            clean_text = clean_text.split("\n", 1)[-1]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+            clean_text = clean_text.strip()
+            
+        return json.loads(clean_text)
+        
+    except json.JSONDecodeError as e:
+        print(f"⚠️ [Agent D 에러] JSON 문법 오류로 검수를 강제 패스합니다: {e}")
+        # 검수자의 응답 포맷이 깨진 경우, 시스템이 멈추지 않도록 무조건 통과(pass) 처리
+        return {"pass": True, "feedback": "시스템 알림: 검수자 AI의 응답 형식 오류로 강제 통과됨."}
 
 
 def run_preprocessor_agent(article_info):

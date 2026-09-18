@@ -4,7 +4,7 @@ from datetime import datetime
 from config import TARGET_ARTICLE_COUNT
 from storage.memory import init_db, save_memory, get_recent_memory, get_pending_articles, clear_pending_articles
 from storage.export import save_markdown_report
-from utils.notifier import send_discord_alert
+# from utils.notifier import send_discord_alert
 from collectors.market import fetch_macro_indicators
 from agents.core import (
     run_desk_agent, run_analyst_agent, run_editor_agent, run_reviewer_agent,
@@ -27,27 +27,51 @@ def main():
     print(f"✅ 지난 24시간 동안 필터링된 {len(pending_news)}개의 1차 정예 기사를 불러왔습니다.")
 
     # 2. Agent A (데스크 - 최종 10개 선별)
-    agent_a_data, selected_indices = run_desk_agent(pending_news, count=TARGET_ARTICLE_COUNT)
+    agent_a_data = run_desk_agent(pending_news)
     
     selected_articles = []
-    for idx in selected_indices:
-        if 0 <= idx < len(pending_news):
-            selected_articles.append(pending_news[idx])
+    # 에이전트가 선택한 기사들의 ID 목록 추출
+    selected_ids = [str(item['id']) for item in agent_a_data.get('top_news', [])]
+    
+    # pending_news(대기열)에서 해당 ID를 가진 기사들만 골라내기
+    for news in pending_news:
+        if str(news['id']) in selected_ids:
+            # 편집장(Agent C)이 사용할 수 있도록 '선정 이유(reason)'를 기사 데이터에 추가
+            for top_news_item in agent_a_data.get('top_news', []):
+                if str(top_news_item['id']) == str(news['id']):
+                    news['reason'] = top_news_item.get('reason', '')
+                    break
+            selected_articles.append(news)
             
     if not selected_articles:
          print("❌ 데스크 에이전트가 기사를 선별하지 못했습니다.")
          return
 
-    # 3. Agent E (병렬 전처리 - 노이즈 제거 및 번역)
-    preprocessed_articles = run_preprocessor_agent(selected_articles)
-
-    # 4. 거시 지표 수집 및 Agent F (기억 합성)
+   # 3. 거시 지표 수집 및 Agent F (기억 합성) - 분석 전에 먼저 시장 상황 파악
     macro_indicators = fetch_macro_indicators()
     past_memory = get_recent_memory(days=5)
     market_context = run_memory_synthesizer_agent(past_memory)
 
-    # 5. Agent B (순차 딥다이브 분석 - 429 에러 방어)
-    merged_data = run_analyst_agent(preprocessed_articles, market_context)
+    # 4 & 5. Agent E(전처리) 및 Agent B(딥다이브 분석) 순차 실행
+    merged_data = []
+    for article in selected_articles:
+        # DB 대기열(Queue)에 전문(full_text)이 없을 경우 요약본(description)으로 대체
+        if 'full_text' not in article:
+            article['full_text'] = article.get('description', '')
+            
+        # Agent E: 기사 1개씩 노이즈 제거 및 번역
+        clean_text = run_preprocessor_agent(article)
+        article['full_text'] = clean_text
+        
+        # Agent B: 전처리된 기사 1개씩 심층 분석
+        analysis = run_analyst_agent(article, market_context)
+        
+        # 편집장(Agent C)이 조판할 때 쓸 수 있도록 원본 기사 정보 병합
+        analysis['title'] = article.get('title', '')
+        analysis['link'] = article.get('link', '')
+        analysis['reason'] = article.get('reason', '')
+        
+        merged_data.append(analysis)
 
     # 6. Agent C (편집장) & Agent D (검수자) 자가 수정 루프
     max_retries = 2
@@ -59,7 +83,7 @@ def main():
             print(f"\n🔄 [루프] 피드백을 반영하여 {attempt}번째 재작성 중...")
             
         final_markdown = run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback)
-        review_result = run_reviewer_agent(final_markdown)
+        review_result = run_reviewer_agent(final_markdown, macro_indicators)
         
         if review_result.get("pass"):
             print("\n✅ 검수 통과! 리포트 작성을 확정합니다.")
@@ -80,7 +104,7 @@ def main():
     
     saved_filepath = save_markdown_report(dynamic_keyword, final_markdown)
     save_memory(dynamic_keyword, market_overview, macro_indicators)
-    send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
+    # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
     
     # 💡 9. 처리가 끝난 큐를 싹 비워서 다음 날 찌꺼기가 남지 않게 방지
     clear_pending_articles()

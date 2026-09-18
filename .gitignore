@@ -17,6 +17,8 @@ config.py
 economy_memory.db
 obsidian_notes/
 cron.log
+daily.log
+hourly.log
 
 #test
 test/
