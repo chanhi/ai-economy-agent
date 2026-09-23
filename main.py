@@ -26,47 +26,51 @@ def main():
 
     print(f"✅ 지난 24시간 동안 필터링된 {len(pending_news)}개의 1차 정예 기사를 불러왔습니다.")
 
-    # 2. Agent A (데스크 - 최종 10개 선별)
-    agent_a_data = run_desk_agent(pending_news)
+    # 2. Agent A (데스크 - 목표치보다 넉넉하게 15개의 '후보군' 선별)
+    TARGET_FINAL_COUNT = 10  # 리포트에 실을 최종 기사 개수
+    agent_a_data = run_desk_agent(pending_news, target_count=TARGET_FINAL_COUNT)
     
-    selected_articles = []
-    # 에이전트가 선택한 기사들의 ID 목록 추출
     selected_ids = [str(item['id']) for item in agent_a_data.get('top_news', [])]
+    candidate_articles = []
     
-    # pending_news(대기열)에서 해당 ID를 가진 기사들만 골라내기
     for news in pending_news:
         if str(news['id']) in selected_ids:
-            # 편집장(Agent C)이 사용할 수 있도록 '선정 이유(reason)'를 기사 데이터에 추가
             for top_news_item in agent_a_data.get('top_news', []):
                 if str(top_news_item['id']) == str(news['id']):
                     news['reason'] = top_news_item.get('reason', '')
                     break
-            selected_articles.append(news)
+            candidate_articles.append(news)
             
-    if not selected_articles:
+    if not candidate_articles:
          print("❌ 데스크 에이전트가 기사를 선별하지 못했습니다.")
          return
 
-   # 3. 거시 지표 수집 및 Agent F (기억 합성) - 분석 전에 먼저 시장 상황 파악
+    # 3. 거시 지표 수집 및 Agent F (기억 합성)
     macro_indicators = fetch_macro_indicators()
     past_memory = get_recent_memory(days=5)
     market_context = run_memory_synthesizer_agent(past_memory)
 
-    # 4 & 5. Agent E(전처리) 및 Agent B(딥다이브 분석) 순차 실행
+    # 4 & 5. Agent E & B (목표 개수가 채워질 때까지만 분석 진행)
     merged_data = []
-    for article in selected_articles:
-        # DB 대기열(Queue)에 전문(full_text)이 없을 경우 요약본(description)으로 대체
+    for article in candidate_articles:
+        if len(merged_data) >= TARGET_FINAL_COUNT:
+            print(f"✅ 목표한 {TARGET_FINAL_COUNT}개의 심층 분석이 완료되어 분석 루프를 조기 종료합니다.")
+            break 
+            
         if 'full_text' not in article:
             article['full_text'] = article.get('description', '')
             
-        # Agent E: 기사 1개씩 노이즈 제거 및 번역
+        # Agent E: 전처리
         clean_text = run_preprocessor_agent(article)
         article['full_text'] = clean_text
         
-        # Agent B: 전처리된 기사 1개씩 심층 분석
+        # Agent B: 심층 분석
         analysis = run_analyst_agent(article, market_context)
         
-        # 편집장(Agent C)이 조판할 때 쓸 수 있도록 원본 기사 정보 병합
+        # 💡 핵심 개선: 분석 중 에러가 났다면(None 반환) 과감히 버리고 다음 후보 기사로 넘어감
+        if not analysis:
+            continue
+            
         analysis['title'] = article.get('title', '')
         analysis['link'] = article.get('link', '')
         analysis['reason'] = article.get('reason', '')

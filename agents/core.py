@@ -10,8 +10,7 @@ HEAVY_MODELS = [
     'gemini-flash-latest', 
     'models/gemini-3.7-flash',
     'models/gemini-3.6-flash',
-    'models/gemini-3.5-flash',
-    'models/gemini-2.5-flash'
+    'models/gemini-3.5-flash'
 ]
 
 LITE_MODELS = [
@@ -33,26 +32,35 @@ def smart_gemini_call(prompt, config_params, model_tier="heavy", retries=2):
                     config=types.GenerateContentConfig(**config_params)
                 )
                 return response.text
-            except APIError as e:
+                
+            # 💡 기존 APIError 대신 모든 종류의 에러(ClientError 등)를 다 잡아내는 Exception 사용
+            except Exception as e:
                 error_msg = str(e)
+                
+                # 429(한도초과) 또는 50x(서버오류)는 잠시 대기 후 재시도할 가치가 있음
                 if '429' in error_msg or '503' in error_msg or '500' in error_msg:
-                    err_type = "429 한도 초과" if '429' in error_msg else "503 서버 과부하"
+                    err_type = "429 한도 초과" if '429' in error_msg else "50X 서버 과부하"
                     print(f"⚠️ [{err_type}] {model_name}({model_tier}) 상태 불안정. (시도 {attempt+1}/{retries})")
                     
                     if attempt < retries - 1:
                         wait_time = 65 if '429' in error_msg else 10
                         print(f"⏳ {wait_time}초 대기 후 재시도합니다...")
+                        import time
                         time.sleep(wait_time)
                         continue
                     else:
                         print(f"🔄 {model_name} 응답 실패. 다음 {model_tier} 모델로 전환합니다.")
-                        break
+                        break # 현재 모델 포기, 다음 모델로 이동
+                        
+                # 404(모델 단종), 400(잘못된 요청) 등은 재시도해도 무조건 실패하므로 즉시 패스
                 else:
-                    print(f"❌ API 에러: {e}")
-                    raise e
-                    
-    raise Exception(f"🚨 사용 가능한 모든 {model_tier} 모델의 한도가 초과되었거나 에러가 발생했습니다.")
+                    print(f"⏩ [{model_name}] 지원되지 않는 모델이거나 치명적 에러 발생({error_msg[:40]}...). 즉시 다음 모델로 전환합니다.")
+                    break # 남은 재시도 횟수를 무시하고 바로 다음 모델로 이동
 
+    # 🚨 리스트에 있는 모든 모델이 실패했을 경우 프로그램이 뻗지 않게 하는 최종 안전망
+    print(f"🚨 [치명적 오류] 사용 가능한 모든 {model_tier} 모델이 응답하지 않습니다.")
+    # 에이전트들이 json.loads()를 시도하다가 안전하게 예외처리(Try-Except)로 빠질 수 있도록 빈 문자열 반환
+    return "{}"
 
 def run_desk_agent(all_news, target_count=8):
     news_context = ""
@@ -67,8 +75,9 @@ def run_desk_agent(all_news, target_count=8):
     3. 주식/투자 시장에 가장 큰 파급력을 가질 핵심 기사 {target_count}개를 선별해라.
 
     [기사 선별 최우선 규칙 (우선순위)]
-    1. 시장의 방향성을 결정짓는 '초대형 일정' (예: M7(엔비디아, 애플 등) 빅테크 실적 발표, FOMC, CPI 지표 발표)은 발견 즉시 반드시 포함할 것.
-    2. 단순 하락/상승 팩트보다, 상승/하락의 '원인(기대감, 경계심 등)'을 다룬 시황 기사를 우대할 것.
+    1. 시장의 방향성을 결정짓는 '초대형 일정'(실적 발표, FOMC, CPI 등)은 발견 즉시 반드시 포함할 것.
+    2. 단순 하락/상승 팩트보다, 상승/하락의 '원인'을 다룬 시황 기사를 우대할 것.
+    3. [매우 중요] 완전히 동일한 사건이나 주제를 다루는 중복 기사는 절대 여러 개 고르지 말 것. 같은 주제라면 가장 포괄적인 기사 딱 1개만 선택하라.
 
     [뉴스 데이터]
     {news_context}
@@ -146,15 +155,8 @@ def run_analyst_agent(article_info, recent_memory):
         return json.loads(clean_text)
     
     except json.JSONDecodeError as e:
-        print(f"⚠️ [Agent B 에러] JSON 문법 오류가 발생하여 해당 기사 분석을 건너뜁니다: {e}")
-        # 에러 발생 시 프로그램이 뻗지 않도록 기본(Fallback) 데이터 반환
-        return {
-            "id": article_info['id'],
-            "thinking_process": "AI 분석 중 JSON 포맷팅 에러 발생",
-            "summary": ["📌 [시스템 알림] AI의 응답 형식 오류로 인해 해당 기사의 상세 분석이 누락되었습니다."],
-            "affected_sectors": ["분석 불가"],
-            "terms": []
-        }
+        print(f"⚠️ [Agent B 에러] JSON 문법 오류 발생. 해당 기사는 폐기하고 다음 기사로 대체합니다: {e}")
+        return None
 
 
 def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
@@ -204,6 +206,8 @@ def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
     # 🏛️ Daily Macro Report: {dynamic_keyword}
 
     > **💡 Desk's Executive Summary:** {market_overview}
+
+    > **💡 Editor's Deep Dive Summary:** (데스크의 시황과 아래 {len(merged_data)}개의 '심층 분석 데이터' 내용을 모두 종합하여, 오늘 시장의 핵심 흐름과 인사이트를 3~4줄로 직접 작성하라)
 
     ## 📊 글로벌 매크로 지표 브리핑
     - 수치 정리 및 코멘트

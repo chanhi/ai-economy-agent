@@ -124,3 +124,8 @@ ALPHA_VANTAGE_API_KEY = "your_alpha_vantage_key_here"
 DISCORD_WEBHOOK_URL = "your_discord_webhook_url_here"
 
 ```
+
+api 서버 실행
+```bash
+uv run uvicorn server:app --host 0.0.0.0 --port 8000
+```
