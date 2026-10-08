@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from config import GEMINI_API_KEY
+from utils.parser import safe_json_loads
 
 HEAVY_MODELS = [
     'gemini-flash-latest', 
@@ -62,22 +63,21 @@ def smart_gemini_call(prompt, config_params, model_tier="heavy", retries=2):
     # 에이전트들이 json.loads()를 시도하다가 안전하게 예외처리(Try-Except)로 빠질 수 있도록 빈 문자열 반환
     return "{}"
 
-def run_desk_agent(all_news, target_count=8):
+def run_desk_agent(all_news, target_count=10):
     news_context = ""
     for news in all_news:
-        news_context += f"[{news['id']}] {news['title']} | 요약: {news['description']}\n"
+        news_context += f"ID:{news['id']} | 제목:{news['title']} | 요약:{news['description'][:100]}\n"
 
     prompt = f"""
     너는 글로벌 투자 은행의 수석 매크로 에디터다. 
-    제공된 뉴스 목록을 광범위하게 분석하여:
+    제공된 뉴스 목록을 분석하여:
     1. 오늘 시장을 관통하는 가장 핵심적인 키워드 1개
     2. 전체 거시 경제 흐름과 시장 관전 포인트(Market Overview) 2~3줄
     3. 주식/투자 시장에 가장 큰 파급력을 가질 핵심 기사 {target_count}개를 선별해라.
 
-    [기사 선별 최우선 규칙 (우선순위)]
-    1. 시장의 방향성을 결정짓는 '초대형 일정'(실적 발표, FOMC, CPI 등)은 발견 즉시 반드시 포함할 것.
-    2. 단순 하락/상승 팩트보다, 상승/하락의 '원인'을 다룬 시황 기사를 우대할 것.
-    3. [매우 중요] 완전히 동일한 사건이나 주제를 다루는 중복 기사는 절대 여러 개 고르지 말 것. 같은 주제라면 가장 포괄적인 기사 딱 1개만 선택하라.
+    [🚨 중복 제거 절대 규칙 - 매우 중요]
+    - 선택한 {target_count}개의 기사는 모두 **서로 다른 주제/사건**이어야 한다.
+    - 예를 들어 '뉴욕증시 나스닥 사상 최고치 마감' 같은 일반 시황 기사는 **전체 중에서 딱 1개만** 골라라. 언론사만 다른 유사 시황 기사를 2개 이상 고르면 절대 안 된다.
 
     [뉴스 데이터]
     {news_context}
@@ -86,19 +86,17 @@ def run_desk_agent(all_news, target_count=8):
     {{
         "today_keyword": "오늘의 핵심 키워드",
         "market_overview": "오늘 시장 흐름 종합 요약",
-        "top_news": [
-            {{"id": "기사ID", "reason": "선택 이유"}}
-        ]
+        "selected_ids": ["선별된 기사 ID 문자열 리스트 (예: '12', '45', ...)"]
     }}
     """
-    print(f"🧑‍💼 [Agent A: 데스크] Lite 모델로 {len(all_news)}개 뉴스 중 핵심 기사 {target_count}개 선별 중...")
+    print(f"🧑‍💼 [Agent A: 데스크] Lite 모델로 {len(all_news)}개 뉴스 중 중복 없는 핵심 기사 {target_count}개 선별 중...")
     
     result_text = smart_gemini_call(
         prompt=prompt, 
-        config_params={"temperature": 0.2, "response_mime_type": "application/json"},
+        config_params={"temperature": 0.1, "response_mime_type": "application/json"},
         model_tier="lite"
     )
-    return json.loads(result_text)
+    return safe_json_loads(result_text, default_val={})
 
 
 def run_analyst_agent(article_info, recent_memory):
@@ -117,13 +115,15 @@ def run_analyst_agent(article_info, recent_memory):
     {full_text}
     
     [분석 지침]
-    1. thinking_process: [최근 시장 흐름]과 비교하여 기존 추세 지속인지, 변곡점인지 추론해라.
-    2. summary: [핵심 팩트] - [발생 배경/원인] - [시장 영향 및 수치 분석] - [향후 전망]으로 상세히 구성하라.
-    3. affected_sectors: 호재/악재를 받는 구체적 섹터(테마)를 명시하라.
+    1. selection_reason: 이 기사가 오늘 글로벌 거시경제 및 투자자에게 왜 중요한지 '선정 이유'를 1문장으로 명확히 요약하라.
+    2. thinking_process: [최근 시장 흐름]과 비교하여 기존 추세 지속인지, 변곡점인지 추론해라.
+    3. summary: [핵심 팩트] - [발생 배경/원인] - [시장 영향 및 수치 분석] - [향후 전망]으로 상세히 구성하라.
+    4. affected_sectors: 호재/악재를 받는 구체적 섹터(테마)를 명시하라.
 
     응답형식(JSON):
     {{
         "id": "{article_info['id']}",
+        "selection_reason": "이 기사를 핵심 리포트로 선정한 이유 (1문장)",
         "thinking_process": "...",
         "summary": [
             "📌 [핵심 팩트] ...",
@@ -142,21 +142,7 @@ def run_analyst_agent(article_info, recent_memory):
         config_params={"temperature": 0.2, "response_mime_type": "application/json"},
         model_tier="heavy"
     )
-    
-    try:
-        # 가끔 모델이 마크다운(```json)을 붙여서 반환하는 경우를 대비한 텍스트 정제
-        clean_text = result_text.strip()
-        if clean_text.startswith("```"):
-            clean_text = clean_text.split("\n", 1)[-1]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
-            clean_text = clean_text.strip()
-            
-        return json.loads(clean_text)
-    
-    except json.JSONDecodeError as e:
-        print(f"⚠️ [Agent B 에러] JSON 문법 오류 발생. 해당 기사는 폐기하고 다음 기사로 대체합니다: {e}")
-        return None
+    return safe_json_loads(result_text, default_val=None)
 
 
 def run_editor_agent(merged_data, agent_a_data, macro_indicators, feedback=""):
@@ -312,21 +298,10 @@ def run_reviewer_agent(markdown_report, macro_indicators):
         model_tier="lite"
     )
     
-    # 💡 무인 자동화를 위한 검수자 JSON 파싱 안전망
-    try:
-        clean_text = result_text.strip()
-        if clean_text.startswith("```"):
-            clean_text = clean_text.split("\n", 1)[-1]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
-            clean_text = clean_text.strip()
-            
-        return json.loads(clean_text)
-        
-    except json.JSONDecodeError as e:
-        print(f"⚠️ [Agent D 에러] JSON 문법 오류로 검수를 강제 패스합니다: {e}")
-        # 검수자의 응답 포맷이 깨진 경우, 시스템이 멈추지 않도록 무조건 통과(pass) 처리
-        return {"pass": True, "feedback": "시스템 알림: 검수자 AI의 응답 형식 오류로 강제 통과됨."}
+    return safe_json_loads(
+        result_text, 
+        default_val={"pass": True, "feedback": "시스템 알림: 검수자 AI의 응답 형식 오류로 강제 통과됨."}
+    )
 
 
 def run_preprocessor_agent(article_info):
@@ -402,4 +377,4 @@ def run_hourly_filter_agent(all_news, target_count=15):
         config_params={"temperature": 0.1, "response_mime_type": "application/json"},
         model_tier="lite"
     )
-    return json.loads(result_text)
+    return safe_json_loads(result_text, default_val={"selected_indices": []})

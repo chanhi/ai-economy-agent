@@ -28,17 +28,16 @@ def main():
 
     # 2. Agent A (데스크 - 목표치보다 넉넉하게 15개의 '후보군' 선별)
     TARGET_FINAL_COUNT = 10  # 리포트에 실을 최종 기사 개수
-    agent_a_data = run_desk_agent(pending_news, target_count=TARGET_FINAL_COUNT)
+    agent_a_data = run_desk_agent(pending_news, target_count=TARGET_FINAL_COUNT + 3)
     
-    selected_ids = [str(item['id']) for item in agent_a_data.get('top_news', [])]
+    selected_ids = [str(i) for i in agent_a_data.get('selected_ids', [])]
+    # ID 중복 매칭 방지를 위해 seen_ids 집합(Set) 사용
+    seen_ids = set()
     candidate_articles = []
-    
     for news in pending_news:
-        if str(news['id']) in selected_ids:
-            for top_news_item in agent_a_data.get('top_news', []):
-                if str(top_news_item['id']) == str(news['id']):
-                    news['reason'] = top_news_item.get('reason', '')
-                    break
+        nid = str(news['id'])
+        if nid in selected_ids and nid not in seen_ids:
+            seen_ids.add(nid)
             candidate_articles.append(news)
             
     if not candidate_articles:
@@ -50,7 +49,7 @@ def main():
     past_memory = get_recent_memory(days=5)
     market_context = run_memory_synthesizer_agent(past_memory)
 
-    # 4 & 5. Agent E & B (목표 개수가 채워질 때까지만 분석 진행)
+    # 4 & 5. Agent E & B
     merged_data = []
     for article in candidate_articles:
         if len(merged_data) >= TARGET_FINAL_COUNT:
@@ -64,16 +63,16 @@ def main():
         clean_text = run_preprocessor_agent(article)
         article['full_text'] = clean_text
         
-        # Agent B: 심층 분석
+        # Agent B: 심층 분석 (여기서 해당 기사 전용 selection_reason도 함께 생성)
         analysis = run_analyst_agent(article, market_context)
         
-        # 💡 핵심 개선: 분석 중 에러가 났다면(None 반환) 과감히 버리고 다음 후보 기사로 넘어감
         if not analysis:
             continue
             
         analysis['title'] = article.get('title', '')
         analysis['link'] = article.get('link', '')
-        analysis['reason'] = article.get('reason', '')
+        # 💡 Agent B가 해당 기사만 보고 직접 작성한 선정 이유를 바인딩
+        analysis['reason'] = analysis.get('selection_reason', '')
         
         merged_data.append(analysis)
 
