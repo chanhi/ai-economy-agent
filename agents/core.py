@@ -378,3 +378,73 @@ def run_hourly_filter_agent(all_news, target_count=15):
         model_tier="lite"
     )
     return safe_json_loads(result_text, default_val={"selected_indices": []})
+
+# ==========================================
+# 🔍 에이전트 I (테마 추출기 - 주간 결산용)
+# ==========================================
+def run_theme_extractor_agent(weekly_outline):
+    prompt = f"""
+    아래는 이번 주 일간 경제 리포트들의 핵심 요약본이다.
+    이를 바탕으로 이번 주 시장을 지배한 가장 중요한 거시경제 테마 3~4가지를 도출하라.
+    설명 없이 반드시 쉼표(,)로만 구분된 짧은 키워드 형태로 출력하라.
+    예시: 미국 국채금리 급등, AI 반도체 실적 충격, 고용 지표 둔화
+
+    [주간 요약본]
+    {weekly_outline}
+    """
+    print("🔍 [Agent I: 테마 추출기] Lite 모델로 이번 주 핵심 테마 키워드 도출 중...")
+    result_text = smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.1}, 
+        model_tier="lite"
+    )
+    return [theme.strip() for theme in result_text.split(",") if theme.strip()]
+
+# ==========================================
+# 👑 에이전트 G (수석 전략가 - 주간 결산용 RAG 버전)
+# ==========================================
+def run_chief_strategist_agent(weekly_outline, rag_context):
+    prompt = f"""
+    너는 월스트리트 최고 등급의 수석 매크로 전략가(Chief Strategist)다.
+    아래 제공된 [이번 주 전체 흐름 요약]과 [RAG 테마별 심층 분석 데이터]를 바탕으로,
+    파편화된 사건들을 연결하여 거대한 서사(Narrative)를 가진 '주간 경제 총결산' 리포트를 작성하라.
+    어조는 '합니다/입니다'의 정중하고 전문적인 문어체를 사용해라.
+
+    [이번 주 전체 흐름 요약 (Outline)]
+    {weekly_outline}
+
+    [RAG 테마별 심층 분석 데이터 (Deep Dives)]
+    {rag_context}
+
+    [마크다운 작성 포맷]
+    ---
+    tags: [주간경제결산, WeeklyStrategy]
+    date: {datetime.now().strftime("%Y-%m-%d")}
+    ---
+    # 👑 Weekly Macro Strategy: 이번 주 시장을 지배한 거대한 흐름
+
+    > **💡 Chief's Insight:** (이번 주 시장 전체를 관통하는 핵심 요약 2~3줄)
+
+    ## 🌊 주간 핵심 테마 내러티브 (Core Themes)
+    - 시간순이 아닌 '테마별'로 입체적으로 분석하라. (단순 요약이 아닌 맥락과 인과관계 연결)
+
+    ## 📊 주요 매크로 지표 및 이벤트 리뷰
+    - 파급력이 컸던 지표를 되짚어보고 의미를 해석.
+
+    ## 🎯 수혜/피해 주요 섹터 결산
+    - 이번 주 가장 뜨거웠던 섹터와 타격을 입은 섹터 정리.
+
+    ## 🔮 다음 주 시장 관전 포인트 (Next Week Watchpoints)
+    - 다음 주 주의 깊게 지켜봐야 할 리스크나 기회 요인 2~3가지.
+
+    [💡 옵시디언 백링크(Backlink) 강제 규칙 - 매우 중요]
+    - 본문에 등장하는 모든 '국가명', '기업명', '거시 지표명(CPI, 금리, 환율 등)', '주요 경제 용어', '섹터명'은 무조건 양옆에 대괄호를 씌워 `[[단어]]` 양식으로 작성하라.
+    - 자산 간의 상관관계나 인과관계를 설명할 때 백링크를 적극 활용하라.
+    """
+    print("👑 [Agent G: 수석 전략가] Heavy 모델로 테마 중심의 주간 전략 수립 중...")
+    
+    return smart_gemini_call(
+        prompt=prompt, 
+        config_params={"temperature": 0.3},
+        model_tier="heavy"
+    )

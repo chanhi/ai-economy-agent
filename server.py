@@ -3,8 +3,9 @@ import os
 import re
 from datetime import datetime
 from config import API_KEY_NAME, SECRET_API_KEY
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Security, Depends, Query
 from fastapi.security import APIKeyHeader
+from storage.vector_db import search_similar_reports
 
 # 옵시디언 마크다운 리포트 저장 절대 경로
 OBSIDIAN_DIR = "/home/chan/economySummary/obsidian_notes"
@@ -112,3 +113,29 @@ def get_weekly_report(api_key: str = Depends(verify_api_key)):
         raise HTTPException(status_code=404, detail="주간 리포트를 찾을 수 없습니다.")
         
     return parse_markdown_to_json(file_path, content)
+
+@app.get("/api/search")
+def search_reports(
+    # FastAPI 물리적 길이 방어 (최소 2자 ~ 최대 50자로 제한하여 무의미한 대량 토큰 요청(과금 폭탄) 원천 차단)
+    q: str = Query(..., min_length=2, max_length=50, description="검색할 자연어 질문 (최대 50자 제한)"),
+    top_k: int = Query(5, ge=1, le=20, description="반환할 최대 결과 개수"),
+    api_key: str = Depends(verify_api_key)
+):
+    """모바일 앱 용: Vector DB 기반 과거 리포트 의미 검색 (Semantic Search)"""
+    try:
+        # XSS 및 특수문자 주입 방어 (Sanitization)
+        # 1. html.escape(): <script> 등 악의적인 HTML/자바스크립트 태그 무력화
+        # 2. replace(): 시스템 쿼리를 혼란스럽게 만들 수 있는 따옴표와 줄바꿈 제거
+        safe_q = html.escape(q).replace("'", "").replace('"', "").replace('\n', ' ')
+
+        # 정제된 안전한 검색어(safe_q)만 Vector DB로 전달
+        results = search_similar_reports(query=safe_q, top_k=top_k)
+        
+        return {
+            "status": "ok",
+            "query": safe_q,  # 앱으로 반환할 때도 정제된 검색어를 내려주어 안전성 확보
+            "count": len(results),
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"검색 처리 중 오류가 발생했습니다: {str(e)}")

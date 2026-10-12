@@ -19,6 +19,8 @@ obsidian_notes/
 cron.log
 daily.log
 hourly.log
+chroma_data/
 
 #test
 test/
+

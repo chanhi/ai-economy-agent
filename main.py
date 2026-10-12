@@ -1,4 +1,4 @@
-import time
+import time, os
 from datetime import datetime
 
 from config import TARGET_ARTICLE_COUNT
@@ -10,6 +10,8 @@ from agents.core import (
     run_desk_agent, run_analyst_agent, run_editor_agent, run_reviewer_agent,
     run_preprocessor_agent, run_memory_synthesizer_agent, run_portfolio_architect_agent
 )
+from storage.vector_db import parse_and_index_markdown, OBSIDIAN_DIR
+import glob
 
 def main():
     print("🚀 일간 거시경제 리포트 파이프라인(Phase 1 - Queue 기반)을 시작합니다...")
@@ -108,6 +110,26 @@ def main():
     saved_filepath = save_markdown_report(dynamic_keyword, final_markdown)
     save_memory(dynamic_keyword, market_overview, macro_indicators)
     # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
+    
+    try:
+        # save_markdown_report가 파일 경로를 반환하지 않는 경우를 대비해 최신 파일 자동 탐색
+        target_path = saved_filepath
+        if not target_path or not isinstance(target_path, str) or not os.path.exists(target_path):
+            md_files = [
+                f for f in glob.glob(f"{OBSIDIAN_DIR}/**/*.md", recursive=True)
+                if "일간" in os.path.basename(f)
+            ]
+            target_path = max(md_files, key=os.path.getmtime) if md_files else "today_report.md"
+
+        # 오늘 리포트가 수정/재실행될 경우 최신 내용으로 덮어쓰기 위해 skip_existing=False 적용
+        added_cnt, _ = parse_and_index_markdown(
+            filepath=target_path,
+            markdown_text=final_markdown,
+            skip_existing=False
+        )
+        print(f"🧠 [Vector DB] 오늘자 리포트 {added_cnt}개 섹션 벡터 임베딩 및 적재 완료!")
+    except Exception as e:
+        print(f"⚠️ [Vector DB 인덱싱 에러] 리포트 저장은 성공했으나 벡터 적재 중 오류 발생: {e}")
     
     # 💡 9. 처리가 끝난 큐를 싹 비워서 다음 날 찌꺼기가 남지 않게 방지
     clear_pending_articles()
