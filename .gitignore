@@ -13,14 +13,12 @@ wheels/
 .env
 config.py
 
-# 생성된 파일 (DB 및 마크다운 파일 전체 무시)
+# 생성된 파일 (DB, 로그 및 마크다운 파일 전체 무시)
 economy_memory.db
 obsidian_notes/
-cron.log
-daily.log
-hourly.log
+*.log
+*.log.*
 chroma_data/
 
-#test
+# test
 test/
-
