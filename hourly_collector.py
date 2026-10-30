@@ -3,7 +3,7 @@ from collectors.news import fetch_domestic_news, fetch_overseas_news
 from agents.core import run_hourly_filter_agent, reset_fallback_count, get_fallback_count
 from storage.memory import init_db, save_pending_articles, record_pipeline_run
 from utils.logger import get_logger
-from utils.notifier import send_error_alert
+# from utils.notifier import send_error_alert
 
 logger = get_logger("hourly_collector")
 
@@ -61,7 +61,7 @@ def main():
     except Exception as e:
         logger.error(f"🚨 시간당 수집 파이프라인 예외 발생: {e}")
         record_pipeline_run("hourly_collector", started_at, "error", 0, get_fallback_count(), str(e))
-        send_error_alert("hourly_collector", str(e))
+        # send_error_alert("hourly_collector", str(e))
         raise
 
 

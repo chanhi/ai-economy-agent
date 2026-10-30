@@ -65,6 +65,15 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_daily_usage (
+            usage_date TEXT,
+            endpoint TEXT,
+            call_count INTEGER DEFAULT 0,
+            PRIMARY KEY (usage_date, endpoint)
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -323,3 +332,65 @@ def get_recent_pipeline_runs(limit: int = 5) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def consume_daily_quota(endpoint: str, daily_limit: int) -> tuple[bool, int]:
+    """
+    서버 전체 일일 API 호출 상한을 SQLite 트랜잭션으로 원자적(Atomic) 검증 및 차감합니다.
+    서버 재시작 시에도 당일 누적 횟수가 그대로 유지되며 자정(YYYY-MM-DD 변경)에 자동 초기화됩니다.
+    반환값: (허용 여부, 현재까지 사용된 당일 누적 횟수)
+    """
+    init_db()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH, isolation_level=None)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute(
+            "SELECT call_count FROM api_daily_usage WHERE usage_date = ? AND endpoint = ?",
+            (today_str, endpoint),
+        )
+        row = cursor.fetchone()
+        current_used = int(row[0]) if row else 0
+
+        if current_used >= daily_limit:
+            cursor.execute("COMMIT")
+            return False, current_used
+
+        new_used = current_used + 1
+        cursor.execute(
+            '''
+            INSERT INTO api_daily_usage (usage_date, endpoint, call_count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(usage_date, endpoint) DO UPDATE SET call_count = call_count + 1
+            ''',
+            (today_str, endpoint),
+        )
+        cursor.execute("COMMIT")
+        return True, new_used
+    except Exception:
+        cursor.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+
+
+def get_daily_quota_status(endpoint: str, daily_limit: int) -> dict:
+    """당일 서버 전체 API 호출 사용량 및 잔여 횟수를 조회합니다."""
+    init_db()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT call_count FROM api_daily_usage WHERE usage_date = ? AND endpoint = ?",
+        (today_str, endpoint),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    used = int(row[0]) if row else 0
+    return {
+        "date": today_str,
+        "limit": daily_limit,
+        "used": used,
+        "remaining": max(0, daily_limit - used),
+    }

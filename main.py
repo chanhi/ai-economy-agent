@@ -32,7 +32,7 @@ from agents.core import (
     get_fallback_count,
 )
 from utils.logger import get_logger
-from utils.notifier import send_discord_alert, send_error_alert
+# from utils.notifier import send_discord_alert, send_error_alert
 
 logger = get_logger("daily_pipeline")
 
@@ -66,7 +66,7 @@ def main():
             msg = f"대기열에 충분한 기사가 없습니다. (현재 {len(pending_news)}개 / 필요 {TARGET_ARTICLE_COUNT}개)"
             logger.warning(f"⚠️ {msg}")
             record_pipeline_run("daily_pipeline", started_at, "skipped_insufficient_queue", len(pending_news), 0, msg)
-            send_error_alert("daily_pipeline (Queue 부족)", msg)
+            # send_error_alert("daily_pipeline (Queue 부족)", msg)
             return
 
         logger.info(f"✅ 지난 24시간 동안 필터링된 {len(pending_news)}개의 1차 정예 기사를 불러왔습니다.")
@@ -107,7 +107,7 @@ def main():
             msg = "데스크 에이전트가 유효한 후보 기사를 선별하지 못했습니다."
             logger.error(f"❌ {msg}")
             record_pipeline_run("daily_pipeline", started_at, "error_empty_selection", 0, get_fallback_count(), msg)
-            send_error_alert("daily_pipeline (데스크 선별 실패)", msg)
+            # send_error_alert("daily_pipeline (데스크 선별 실패)", msg)
             return
 
         dynamic_keyword = agent_a_data.get("today_keyword", "주요이슈")
@@ -157,7 +157,7 @@ def main():
             msg = "개별 기사 심층 분석(Agent B) 결과가 비어 있어 리포트 생성을 중단합니다."
             logger.error(f"❌ {msg}")
             record_pipeline_run("daily_pipeline", started_at, "error_empty_analysis", 0, get_fallback_count(), msg)
-            send_error_alert("daily_pipeline (분석 결과 없음)", msg)
+            # send_error_alert("daily_pipeline (분석 결과 없음)", msg)
             return
 
         # 6. 하이브리드 조판(Agent C) & 무결성 검수(Agent D) 루프
@@ -200,7 +200,7 @@ def main():
             metrics_dict=macro_metrics,
             sentiment_score=sentiment_score,
         )
-        send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
+        # send_discord_alert(dynamic_keyword, market_overview, macro_indicators, saved_filepath)
 
         try:
             target_path = saved_filepath
@@ -235,7 +235,7 @@ def main():
     except Exception as e:
         logger.error(f"🚨 일간 파이프라인 치명적 오류: {e}")
         record_pipeline_run("daily_pipeline", started_at, "error", 0, get_fallback_count(), str(e))
-        send_error_alert("daily_pipeline", str(e))
+        # send_error_alert("daily_pipeline", str(e))
         raise
 
 

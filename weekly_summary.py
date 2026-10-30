@@ -13,7 +13,7 @@ from agents.core import (
 from storage.memory import init_db, record_pipeline_run
 from storage.vector_db import parse_and_index_markdown, search_similar_reports
 from utils.logger import get_logger
-from utils.notifier import send_error_alert
+# from utils.notifier import send_error_alert
 
 logger = get_logger("weekly_summary")
 
@@ -129,7 +129,7 @@ def main():
     except Exception as e:
         logger.error(f"🚨 주간 파이프라인 오류: {e}")
         record_pipeline_run("weekly_summary", started_at, "error", 0, get_fallback_count(), str(e))
-        send_error_alert("weekly_summary", str(e))
+        # send_error_alert("weekly_summary", str(e))
         raise
 
 

@@ -11,9 +11,17 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
+import config
 from config import API_KEY_NAME, OBSIDIAN_OUTPUT_DIR, SECRET_API_KEY
+
+DAILY_ASK_LIMIT = getattr(config, "DAILY_ASK_LIMIT", 100)
 from agents.core import run_rag_qa_agent
-from storage.memory import get_macro_history, get_recent_pipeline_runs
+from storage.memory import (
+    consume_daily_quota,
+    get_daily_quota_status,
+    get_macro_history,
+    get_recent_pipeline_runs,
+)
 from storage.vector_db import get_collection, search_similar_reports
 
 # 하위 호환 상수 별칭
@@ -294,6 +302,7 @@ def get_system_health(api_key: str = Depends(verify_api_key)):
         "status": "ok",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "vector_chunks_count": vector_count,
+        "ask_daily_quota": get_daily_quota_status("ask", DAILY_ASK_LIMIT),
         "recent_runs": get_recent_pipeline_runs(limit=5),
     }
 
@@ -318,13 +327,15 @@ def get_weekly_report(api_key: str = Depends(verify_api_key)):
 
 @app.get("/api/reports")
 def list_reports(
+    request: Request,
     report_type: str = Query("all", pattern="^(all|daily|weekly)$", description="조회할 리포트 종류"),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="필터링할 연-월 (예: 2026-10)"),
     limit: int = Query(20, ge=1, le=100, description="반환할 최대 리포트 수"),
     offset: int = Query(0, ge=0, description="페이지네이션 오프셋"),
     api_key: str = Depends(verify_api_key),
 ):
-    """모바일 앱 아카이브/캘린더 탭 용: 리포트 목록 메타데이터 조회"""
+    """모바일 앱 아카이브/캘린더 탭 용: 리포트 목록 메타데이터 조회 (대량 스크래핑 방지 Rate Limit 적용)"""
+    check_rate_limit(request, max_requests=15, window_sec=60)
     search_root = os.path.join(OBSIDIAN_OUTPUT_DIR, month) if month else OBSIDIAN_OUTPUT_DIR
     if not os.path.exists(search_root):
         return {"status": "ok", "total": 0, "items": []}
@@ -385,10 +396,12 @@ def macro_history_endpoint(
 
 @app.get("/api/report/detail")
 def get_report_detail(
+    request: Request,
     path: str = Query(..., description="조회할 리포트의 상대 경로 (예: 2026-10/2026-10-08_일간_종합_경제요약.md)"),
     api_key: str = Depends(verify_api_key),
 ):
-    """모바일 앱 용: 검색 결과 또는 목록에서 선택한 특정 원문 리포트 상세 조회"""
+    """모바일 앱 용: 검색 결과 또는 목록에서 선택한 특정 원문 리포트 상세 조회 (대량 스크래핑 방지 Rate Limit 적용)"""
+    check_rate_limit(request, max_requests=15, window_sec=60)
     try:
         safe_path = os.path.normpath(path)
         if safe_path.startswith("..") or os.path.isabs(safe_path):
@@ -453,14 +466,22 @@ def ask_macro_assistant(
     request: Request,
     api_key: str = Depends(verify_api_key),
 ):
-    """모바일 앱 용: 과거 리포트 Vector DB를 근거로 답변하는 인터랙티브 RAG Q&A 챗봇"""
+    """모바일 앱 용: 과거 리포트 Vector DB를 근거로 답변하는 인터랙티브 RAG Q&A 챗봇 (서버 전체 일 100회 상한)"""
     check_rate_limit(request, max_requests=10, window_sec=60)
     try:
         safe_q = _sanitize_user_text(body.question)
         cache_key = f"ask:{safe_q}:{body.top_k}"
         cached = _get_cached_response(cache_key)
         if cached is not None:
-            return cached
+            quota = get_daily_quota_status("ask", DAILY_ASK_LIMIT)
+            return {**cached, "daily_quota": quota}
+
+        allowed, used_count = consume_daily_quota("ask", DAILY_ASK_LIMIT)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"서버 전체 일일 AI Q&A 한도({DAILY_ASK_LIMIT}회)가 모두 소진되었습니다. 내일 다시 이용해 주세요.",
+            )
 
         retrieved = search_similar_reports(query=safe_q, top_k=body.top_k)
         qa_result = run_rag_qa_agent(safe_q, retrieved)
@@ -475,14 +496,23 @@ def ask_macro_assistant(
             }
             for r in retrieved
         ]
+        quota_info = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "limit": DAILY_ASK_LIMIT,
+            "used": used_count,
+            "remaining": max(0, DAILY_ASK_LIMIT - used_count),
+        }
         payload = {
             "status": "ok",
             "question": safe_q,
             "answer": qa_result.get("answer", ""),
             "key_points": qa_result.get("key_points", []),
             "citations": citations,
+            "daily_quota": quota_info,
         }
         _set_cached_response(cache_key, payload)
         return payload
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 답변 생성 중 오류가 발생했습니다: {str(e)}")

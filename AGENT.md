@@ -45,13 +45,13 @@ economySummary/
 ├── utils/
 │   ├── logger.py            # stdout + RotatingFileHandler(5MB x 5) 통합 로거
 │   ├── parser.py            # safe_json_loads 및 결정론적 마크다운 계약 검증기(validate_daily_markdown)
-│   └── notifier.py          # Discord 발행 완료 알림 및 파이프라인 장애 경보(send_error_alert)
+│   └── notifier.py          # Discord 웹훅 알림 유틸리티 (현재 실제 웹훅 미연결로 파이프라인 내 전체 주석 비활성화 상태 — 임의 활성화 금지)
 │
 ├── obsidian_notes/          # 생성된 일간/주간 마크다운 저장소 (독립 Private Git 저장소, 루트 Git 제외)
 ├── chroma_data/             # ChromaDB 영구 데이터 디렉토리 (Git 제외)
 ├── backup/                  # 리팩토링 이전 구버전 백업 코드 (수정 및 import 금지)
 ├── test/                    # 단위·계약 자동화 테스트(test_suite.py) 및 수집기 수동 테스트 (Git 제외)
-└── docs/                    # 초기 설계 문서(plan.md) 및 개발 히스토리(개발일지.md)
+└── docs/                    # 설계 문서(plan.md), 모바일 API 명세(api_spec.md), 개발 히스토리(개발일지.md)
 ```
 
 ---
@@ -103,11 +103,11 @@ economySummary/
 * `GET /api/health`: ChromaDB 청크 수 및 최근 파이프라인 실행 이력(`pipeline_runs`) 조회
 * `GET /api/report/today`: 최신 일간 리포트 구조화 JSON 조회 (`sentiment`, `insights`, `macro_indicators`, `news_analysis`, `terms`, `sources`, `portfolio_plan` 포함 — 기존 앱 필드 100% 하위 호환)
 * `GET /api/report/weekly`: 최신 주간 결산 리포트 JSON 조회
-* `GET /api/reports?report_type=all|daily|weekly&month=YYYY-MM&limit=20&offset=0`: 리포트 아카이브 목록 조회
+* `GET /api/reports?report_type=all|daily|weekly&month=YYYY-MM&limit=20&offset=0`: 리포트 아카이브 목록 조회 (대량 스크래핑 방지 분당 15회 제한)
 * `GET /api/macro/history?days=30`: 최근 N일 거시 지표 수치 및 투심 점수 시계열 조회
-* `GET /api/report/detail?path=...`: 상대 경로 기반 특정 리포트 상세 조회 (Path Traversal 방어 적용)
+* `GET /api/report/detail?path=...`: 상대 경로 기반 특정 리포트 상세 조회 (Path Traversal 방어 및 분당 15회 제한 적용)
 * `GET /api/search?q=...&top_k=5`: Vector DB 코사인 유사도 검색 (분당 20회 제한 + 5분 TTL 캐시)
-* `POST /api/ask`: `{"question": "...", "top_k": 5}` — 근거 인용(`citations`)이 포함된 RAG Q&A 답변 생성 (분당 10회 제한 + 5분 TTL 캐시)
+* `POST /api/ask`: `{"question": "...", "top_k": 5}` — 근거 인용(`citations`)이 포함된 RAG Q&A 답변 생성 (서버 전체 일일 100회 상한 SQLite 영속 관리 + 분당 10회 제한 + 5분 TTL 캐시)
 
 ---
 
@@ -137,3 +137,21 @@ uv run uvicorn server:app --host 0.0.0.0 --port 8000
 2. **직렬 처리 원칙 유지**: API RPM/TPM 한도 보호를 위해 `main.py`의 기사 분석 루프에 무분별한 병렬 스레드/비동기 호출을 도입하지 마세요.
 3. **페이월 도메인 스킵**: `collectors/news.py`의 `SKIP_BODY_DOMAINS`(`ft.com`, `marketwatch.com`, `investing.com` 등)는 본문 크롤링 지연을 막고 RSS 요약으로 즉시 폴백하기 위한 의도된 설정입니다.
 4. **옵시디언 볼트 Git 분리**: `obsidian_notes/`는 독립된 Git 저장소(`run_agent.sh`, `run_weekly.sh`에서 자동 Push)이므로 루트 저장소 작업 시 내부 `.git`을 건드리지 마세요.
+
+---
+
+## 8. Git 커밋 메시지 작성 규칙 (Git Commit Convention)
+
+커밋 메시지는 단순 한 줄 요약에 그치지 않고, **무엇을 왜 변경했는지 히스토리만으로 파악할 수 있도록 제목 + 본문 불릿 구조로 상세하게 작성**합니다.
+
+* **제목(Header)**: `<type>: <핵심 변경 요약>` (`feat`, `fix`, `refactor`, `docs`, `chore`, `test` 등)
+* **본문(Body)**: 제목 아래 빈 줄을 두고, 변경된 모듈/도메인별로 구체적인 수정 내역과 해결한 원인을 불릿(`-`)으로 상세히 요약합니다.
+* **민감정보/생성파일 확인**: 커밋 전 반드시 `config.py`, `.env`, `*.log*`, `economy_memory.db`, `chroma_data/`, `obsidian_notes/`가 스테이징에 포함되지 않았는지 확인합니다.
+
+```text
+<type>: <핵심 변경 요약 제목>
+
+- [수집/저장소] 변경된 수집 로직, 스키마, 데이터 처리 방식 및 해결한 원인 요약
+- [에이전트/LLM] 프롬프트, Pydantic 스키마, 모델 라우팅 등 변경 사항 요약
+- [API/운영] 엔드포인트 추가·수정, 보안/캐시 처리, 문서 및 테스트 반영 내역 요약
+```
